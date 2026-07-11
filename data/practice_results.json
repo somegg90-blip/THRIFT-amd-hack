@@ -1,7 +1,7 @@
 [
   {
     "task_id": "practice-01",
-    "answer": "1.  **Identify the core question:** The user is asking for the capital of Australia and the body of water it is near.\n2.  **Retrieve knowledge:**\n    *   Capital of Australia: Canberra.\n    *   Location of Canberra: In the Australian Capital Territory (ACT), inland.\n    *   Bodies of water near Canberra: It is not on the coast. It is inland. However, it is near Lake Burley Griffin (an artificial lake in the city). If the question implies a major natural body of water (like an ocean or sea), the closest ocean is"
+    "answer": "The capital city of Australia is Canberra. It is located in the Australian Capital Territory (ACT) and is situated on the shores of Lake Burley Griffin. The lake was created by the construction of the Hume Dam across the Murrumbidgee River, which flows through the ACT. This body of water plays a significant role in Canberra's landscape and serves as a focal point for the city's development and infrastructure projects."
   },
   {
     "task_id": "practice-02",
@@ -9,26 +9,26 @@
   },
   {
     "task_id": "practice-03",
-    "answer": "Mixed"
+    "answer": "The sentiment of this review can be classified as mixed or neutral-positive with a slight negative leaning.\nPositive aspects:\n- Battery life is described as \"great\"\nNegative aspect:\n- Screen scratching easily is mentioned\nNeutral elements:\n- There's no strong positive or negative emphasis on other features\nOverall, the reviewer seems satisfied with the battery performance but expresses concern about the durability of the screen. This combination suggests an overall neutral-to-positive sentiment, with a minor focus on a potential drawback."
   },
   {
     "task_id": "practice-04",
-    "answer": "The Amazon rainforest, spanning nine South American countries, produces about 20% of the world's oxygen and harbors millions of species, many still undiscovered."
+    "answer": "The Amazon rainforest, known as the Earth's \"lungs,\" generates about 20% of global oxygen production while spanning nine South American nations and housing an estimated million species awaiting scientific discovery."
   },
   {
     "task_id": "practice-05",
-    "answer": "[{\"entity\": \"Maria Sanchez\", \"type\": \"PERSON\"}, {\"entity\": \"Fireworks AI"
+    "answer": "The named entity in the given sentence is:\n- Maria Sanchez (Person)\n  - Type: Person\n- Fireworks AI (Organization)\n  - Type: Organization\n- Berlin (Location)\n  - Type: Location\nThis sentence contains two people (Maria Sanchez) and one organization (Fireworks AI). The location of the event is specified as Berlin."
   },
   {
     "task_id": "practice-06",
-    "answer": "def get_max(nums): return max(nums)"
+    "answer": "def get_max(nums): return max(nums) if nums else None"
   },
   {
     "task_id": "practice-07",
-    "answer": "Sam"
+    "answer": "Based on the information provided:\n\n1. Sam does not own the bird.\n2. Jo owns the dog.\n\nSince there is only one type of pet left for each person (Sam cannot have the bird, so he must have either the cat or the dog), and we know that Jo has the dog, it follows that Sam must have the cat. Therefore, Sam owns the cat."
   },
   {
     "task_id": "practice-08",
-    "answer": "```python\ndef second_largest(lst):\n    \"\"\"\n    Returns the second-largest unique number in the list.\n    If there are fewer than two distinct numbers, returns None.\n    \"\"\"\n    unique = list(set(lst))\n    if len(unique) < 2:\n        return None\n    unique.sort(reverse=True)\n    return unique[1]\n```"
+    "answer": "```python\ndef second_largest(lst):\n    \"\"\"\n    Returns the second-largest unique number in the list.\n    If there are fewer than two distinct numbers, returns None.\n    \"\"\"\n    unique_sorted = sorted(set(lst), reverse=True)\n    if len(unique_sorted) < 2:\n        return None\n    return unique_sorted[1]\n```"
   }
 ]

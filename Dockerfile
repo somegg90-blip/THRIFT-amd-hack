@@ -24,7 +24,7 @@ COPY . .
 # CRITICAL: We are skipping the local model (Tier 1) to guarantee speed on 2 vCPU.
 # Because we skip it, we DO NOT need to download the model weights!
 # This keeps the image small and the build fast.
-ENV THRIFT_SKIP_TIER_1=true
+ENV THRIFT_SKIP_TIER_1=false
 ENV PYTHONUNBUFFERED=1
 
 # Entry point

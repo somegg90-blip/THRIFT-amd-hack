@@ -93,7 +93,7 @@ def get_sorted_models_by_intent(intent: str, available_models: list) -> list:
 
 
 # ── Performance / environment tuning ────────────────────────────────────
-SKIP_TIER_1 = os.getenv("THRIFT_SKIP_TIER_1", "true").lower() == "true"
+SKIP_TIER_1 = os.getenv("THRIFT_SKIP_TIER_1", "false").lower() == "true"
 USE_4BIT = os.getenv("THRIFT_USE_4BIT", "false").lower() == "true"
 
 # ── Cascade Thresholds ────────────────────────────────────────────────
@@ -123,7 +123,7 @@ SIMPLE_MATH_PATTERN = r'[\d]+\s*[\+\-\*\/\%\^]\s*[\d]+'
 
 # ── Tier 1 local model ────────────────────────────────────────────────
 LOCAL_MAX_NEW_TOKENS = 100
-LOCAL_GENERATION_TIMEOUT_SEC = 60
+LOCAL_GENERATION_TIMEOUT_SEC = 30
 
 # ── Confidence estimation ─────────────────────────────────────────────
 HEDGE_PHRASES = [
