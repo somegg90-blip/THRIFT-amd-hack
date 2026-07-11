@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
 Tier implementations for the 3-tier cascade.
+
+Tier 0: Rule-based heuristics  — instant, free, pattern matching.
+Tier 1: Small local model      — free (local tokens = 0 in scoring).
+Tier 2: Fireworks remote API   — paid, highest quality, last resort.
 """
 
+import json
 import logging
-import os
 import re
 import time
 from dataclasses import dataclass
@@ -17,17 +21,21 @@ from config import (
     FIREWORKS_MODEL,
     FIREWORKS_API_BASE,
     FIREWORKS_API_KEY,
-    FIREWORKS_MAX_TOKENS,
+    AVAILABLE_MODELS,
+    IMAGE_MODELS,
+    COMPLEX_INTENTS,
+    get_sorted_models_by_intent,
+    FIREWORKS_MAX_TOKENS_SIMPLE,
+    FIREWORKS_MAX_TOKENS_COMPLEX,
     FIREWORKS_TEMPERATURE,
     FIREWORKS_TIMEOUT_SEC,
     FIREWORKS_MAX_RETRIES,
     FIREWORKS_RETRY_BACKOFF_BASE,
+    TIER2_MAX_TOTAL_ATTEMPTS,
     LOCAL_MAX_NEW_TOKENS,
     HEDGE_PHRASES,
     REFUSAL_PHRASES,
     MIN_ANSWER_LENGTH,
-    SELF_RATING_WEIGHT,
-    HEURISTIC_WEIGHT,
 )
 from safe_math import extract_and_evaluate
 
@@ -282,65 +290,99 @@ class TierOne:
         return answer.strip()
 
     def _estimate_confidence(self, query: str, answer: str) -> float:
-        # Fast confidence estimation. We skip the slow self-rating step 
-        # to ensure Tier 1 executes in < 5 seconds if it is ever used.
         return self._heuristic_confidence(answer)
 
     def _heuristic_confidence(self, answer: str) -> float:
-        lower = answer.lower()
-        score = 1.0
+        return _heuristic_confidence(answer)
 
-        for phrase in REFUSAL_PHRASES:
-            if phrase in lower:
-                return 0.05
 
-        hedge_hits = sum(1 for phrase in HEDGE_PHRASES if phrase in lower)
-        if hedge_hits > 0:
-            score -= min(0.5, 0.2 * hedge_hits)
+# Module-level so both Tier 1 and Tier 2 score answers the same way,
+# with zero extra token cost — it's pure text analysis on an
+# already-generated answer, not another model call.
+def _heuristic_confidence(answer: str) -> float:
+    lower = answer.lower()
+    score = 1.0
 
-        word_count = len(answer.split())
-        if word_count < 5:
-            score -= 0.35
-        elif word_count < 10:
-            score -= 0.15
+    for phrase in REFUSAL_PHRASES:
+        if phrase in lower:
+            return 0.05
 
-        if answer.count("?") > 2:
-            score -= 0.15
+    hedge_hits = sum(1 for phrase in HEDGE_PHRASES if phrase in lower)
+    if hedge_hits > 0:
+        score -= min(0.5, 0.2 * hedge_hits)
 
-        has_numbers = bool(re.search(r'\b\d+\b', answer))
-        if has_numbers:
-            score += 0.05
+    word_count = len(answer.split())
+    if word_count < 5:
+        score -= 0.35
+    elif word_count < 10:
+        score -= 0.15
 
-        has_code = "```" in answer or "def " in answer or "function" in lower
-        if has_code:
-            score += 0.08
+    if answer.count("?") > 2:
+        score -= 0.15
 
-        has_steps = bool(re.search(
-            r'(step \d|first[,:]|second[,:]|third[,:]|finally[,:]|\d+\.\s)',
-            lower
-        ))
-        if has_steps:
-            score += 0.05
+    has_numbers = bool(re.search(r'\b\d+\b', answer))
+    if has_numbers:
+        score += 0.05
 
-        if word_count > 60:
-            score += 0.05
+    has_code = "```" in answer or "def " in answer or "function" in lower
+    if has_code:
+        score += 0.08
 
-        return round(max(0.0, min(1.0, score)), 3)
+    has_steps = bool(re.search(
+        r'(step \d|first[,:]|second[,:]|third[,:]|finally[,:]|\d+\.\s)',
+        lower
+    ))
+    if has_steps:
+        score += 0.05
+
+    if word_count > 60:
+        score += 0.05
+
+    return round(max(0.0, min(1.0, score)), 3)
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Tier 2 — Fireworks Remote API (with smart model selection & fallback)
+# Tier 2 — Fireworks Remote API
+# Smart model routing + a machine-parseable answer contract + bounded
+# retries, so token spend and worst-case latency both stay predictable.
 # ══════════════════════════════════════════════════════════════════════
 
 class FireworksAPIError(RuntimeError):
     """Raised when the Fireworks API call fails after all retries."""
 
 
+FINAL_ANSWER_MARKER = "FINAL ANSWER:"
+_FINAL_ANSWER_RE = re.compile(r'final answer\s*[:\-]\s*', re.IGNORECASE)
+
+
+def _extract_final_answer(raw: str) -> Optional[str]:
+    """
+    Pull out everything after the LAST 'FINAL ANSWER:' marker, if the
+    model included one. This is the primary extraction path: far more
+    reliable than guessing which number/word in a free-form explanation
+    was the intended answer, and it's what lets complex tasks reason a
+    little without breaking downstream parsing.
+    """
+    if not raw:
+        return None
+    matches = list(_FINAL_ANSWER_RE.finditer(raw))
+    if not matches:
+        return None
+    tail = raw[matches[-1].end():].strip()
+    return tail or None
+
+
 class TierTwo:
     """
-    Remote API call to Fireworks with smart model selection and specialized prompts.
-    Uses the cheapest sufficient model based on task complexity.
-    If a model fails (e.g., 404 Not Found), it automatically falls back to the next model.
+    Remote API call to Fireworks with:
+      - Smart model selection (accuracy-first for hard tasks,
+        efficiency-first for easy tasks) — drawn ONLY from the models
+        actually present in this run's ALLOWED_MODELS.
+      - A "FINAL ANSWER:" contract so extraction doesn't have to guess.
+      - Per-complexity token budgets (less waste on simple tasks).
+      - A hard cap on total attempts per subtask across every
+        model+retry combination, so one bad subtask can't eat the
+        whole run's time budget.
     """
 
     def __init__(self, api_key: str = FIREWORKS_API_KEY, model: str = FIREWORKS_MODEL):
@@ -349,82 +391,314 @@ class TierTwo:
         self.call_count = 0
         self.total_tokens_used = 0
         self.failure_count = 0
-        
-        # Parse available models from ALLOWED_MODELS
-        allowed = os.getenv("ALLOWED_MODELS", "")
-        if allowed:
-            self.available_models = [m.strip() for m in allowed.split(",") if m.strip()]
-        else:
-            self.available_models = [model]
 
-    def _build_specialized_prompt(self, query: str):
+        # Single source of truth: config.AVAILABLE_MODELS (parsed once
+        # from ALLOWED_MODELS), not a second env-var parse here.
+        self.available_models = [m for m in AVAILABLE_MODELS if m not in IMAGE_MODELS]
+
+        # If the harness gave us an image-capable model this run, keep
+        # its name separately so image prompts can be routed to the
+        # dedicated /images/generations endpoint instead of chat
+        # completions (which would just describe the image in text and
+        # fail any grading that expects an actual image).
+        self.image_model = next((m for m in AVAILABLE_MODELS if m in IMAGE_MODELS), None)
+
+    # ── Prompt construction ───────────────────────────────────────────
+
+    def _build_specialized_prompt(self, query: str, intent: str = "unknown"):
         """
-        Analyze the query to build a specialized prompt that enforces 
-        conciseness and correct formatting (e.g., JSON for NER).
-        This saves tokens and improves accuracy.
+        Build a system prompt that always funnels down to one
+        machine-parseable 'FINAL ANSWER:' line, with format constraints
+        layered on for recognizable task shapes (JSON extraction,
+        sentiment, code, arithmetic, summary). Complex intents are
+        allowed brief reasoning first; simple intents skip straight to
+        the answer, since forcing zero reasoning on hard tasks trades
+        accuracy for tokens we can't afford to lose.
         """
         lower = query.lower()
-        
-        # Base system prompt for extreme conciseness
-        system = (
-            "You are a highly efficient assistant. "
-            "CRITICAL: Be extremely concise. Provide ONLY the direct answer. "
-            "No explanations, no thinking out loud, no preamble."
+        is_complex = intent in COMPLEX_INTENTS
+
+        # Keep the system instruction concise so the model doesn't pad
+        # with long chain-of-thought. Enforce a strict FINAL ANSWER line.
+        base = (
+            f'You are a concise assistant. When finished, output a single line starting exactly with "{FINAL_ANSWER_MARKER}" '
+            'followed only by the answer. Do not include chain-of-thought or long explanations.'
         )
-        user_content = query
-        
-        # 1. NER (Named Entity Recognition)
+        if is_complex:
+            system = base + (
+                ' If brief reasoning is necessary, include at most one short sentence before the final line.'
+            )
+        else:
+            system = base + ' For simple questions: do not include any reasoning — final line only.'
+
         if any(k in lower for k in ["extract", "named entit", "entities", "label each"]):
-            system += " Return ONLY a valid JSON array of objects with 'entity' and 'type' fields. Example: [{\"entity\": \"Maria\", \"type\": \"PERSON\"}]. No markdown, no other text."
-            user_content = f"{query}\n\nReturn ONLY the JSON array."
-            
-        # 2. Sentiment Analysis
-        elif any(k in lower for k in ["classify the sentiment", "sentiment of"]) and "sentiment" in lower:
-            system += " Reply with ONLY one word: Positive, Negative, Mixed, or Neutral."
-            
-        # 3. Code Generation / Debugging
-        elif any(k in lower for k in ["write a function", "write a python", "implement", "debug", "fix this", "find the error"]):
-            system += " Provide ONLY the corrected/complete code in a ```python block. No explanation."
-            
-        # 4. Math Word Problems
-        elif any(k in lower for k in ["calculate", "how many", "what is the total", "percent", "arithmetic", "word problem"]):
-            system += " Provide the final numerical answer first (use plain numbers, no LaTeX). Be concise."
-            
-        # 5. Summarization
+            system += (
+                f' Your {FINAL_ANSWER_MARKER} line must contain ONLY a valid JSON '
+                'array of objects with "entity" and "type" fields, e.g. '
+                '[{"entity": "Maria", "type": "PERSON"}]. No markdown fences.'
+            )
+        elif "sentiment" in lower and any(
+            k in lower for k in ["classify", "what is the sentiment", "sentiment of"]
+        ):
+            system += (
+                f' Your {FINAL_ANSWER_MARKER} line must be exactly one word: '
+                'Positive, Negative, Neutral, or Mixed.'
+            )
+        elif any(k in lower for k in [
+            "write a function", "write a python", "implement", "debug",
+            "fix this", "find the error", "write code",
+        ]):
+            system += (
+                f' Put ONLY the complete, corrected code after {FINAL_ANSWER_MARKER}, '
+                'inside a ```python code block.'
+            )
+        elif any(k in lower for k in [
+            "calculate", "how many", "what is the total", "percent",
+            "arithmetic", "word problem",
+        ]):
+            system += (
+                f' Your {FINAL_ANSWER_MARKER} line must contain ONLY the final '
+                'number — plain digits, no units, no commas, no LaTeX.'
+            )
         elif any(k in lower for k in ["summarize", "summarise", "summary", "one sentence"]):
-            system += " Provide ONLY the summary. No preamble."
-            
-        return system, user_content
+            system += f' Put ONLY the summary after {FINAL_ANSWER_MARKER}.'
+
+        return system, query
+
+    # ── Post-processing ───────────────────────────────────────────────
+
+    @staticmethod
+    def _normalize_sentiment(text: str) -> Optional[str]:
+        if not text:
+            return None
+        lower = text.strip().lower()
+        for label in ("positive", "negative", "neutral", "mixed"):
+            if lower == label:
+                return label.capitalize()
+        has_pos = "positive" in lower
+        has_neg = "negative" in lower
+        has_mix = "mixed" in lower or (has_pos and has_neg)
+        has_neu = "neutral" in lower
+        if has_mix:
+            return "Mixed"
+        if has_pos and not has_neg:
+            return "Positive"
+        if has_neg and not has_pos:
+            return "Negative"
+        if has_neu:
+            return "Neutral"
+        return None
+
+    @staticmethod
+    def _extract_number(text: str) -> Optional[str]:
+        if not text:
+            return None
+        # (?:\.\d+)? instead of \.?\d* — a decimal point only counts as
+        # part of the number when digits follow it, so a sentence-ending
+        # period right after a number ("...is 36.") isn't swallowed in.
+        anchored = re.search(
+            r'(?:answer|result|total)\D{0,10}(-?\d[\d,]*(?:\.\d+)?)', text, re.IGNORECASE
+        )
+        if anchored:
+            return anchored.group(1).replace(",", "")
+        matches = re.findall(r'-?\d[\d,]*(?:\.\d+)?', text)
+        if matches:
+            return matches[-1].replace(",", "")
+        return None
+
+    @staticmethod
+    def _extract_code(text: str) -> Optional[str]:
+        if not text or "```" not in text:
+            return None
+        start = text.find("```")
+        end = text.find("```", start + 3)
+        if end == -1:
+            return None
+        block = text[start + 3:end].strip()
+        if block.lower().startswith("python"):
+            block = block[6:].strip()
+        return f"```python\n{block}\n```" if block else None
+
+    def _post_process_answer(self, raw_answer: str, query: str) -> str:
+        """
+        Extract the core answer using the FINAL ANSWER contract first,
+        then apply light task-specific cleanup on that (much smaller,
+        safer) string. Falls back to scanning the full raw answer only
+        when the model didn't follow the marker instruction.
+        """
+        lower_query = query.lower()
+        core = _extract_final_answer(raw_answer)
+        answer = core if core is not None else raw_answer.strip()
+
+        if any(k in lower_query for k in ["extract", "named entit", "entities", "label each"]):
+            candidate = re.sub(r'```[a-zA-Z]*\n?|```', '', answer).strip()
+            start, end = candidate.find("["), candidate.rfind("]")
+            if start != -1 and end != -1 and end > start:
+                snippet = candidate[start:end + 1]
+                try:
+                    json.loads(snippet)
+                    return snippet
+                except (ValueError, TypeError):
+                    pass
+            return candidate or raw_answer.strip()
+
+        if "sentiment" in lower_query and any(
+            k in lower_query for k in ["classify", "what is the sentiment", "sentiment of"]
+        ):
+            return (
+                self._normalize_sentiment(answer)
+                or self._normalize_sentiment(raw_answer)
+                or answer
+            )
+
+        if any(k in lower_query for k in [
+            "calculate", "how many", "what is the total", "percent",
+            "arithmetic", "word problem",
+        ]):
+            return self._extract_number(answer) or self._extract_number(raw_answer) or answer
+
+        if any(k in lower_query for k in [
+            "write a function", "write a python", "implement", "debug",
+            "fix this", "find the error", "write code", "code",
+        ]):
+            return self._extract_code(answer) or self._extract_code(raw_answer) or answer
+
+        if answer.startswith("```"):
+            answer = re.sub(r'^```[a-zA-Z]*\n?|```$', '', answer).strip()
+
+        return answer or raw_answer.strip()
+
+    # ── Image generation ──────────────────────────────────────────────
+
+    def _is_image_prompt(self, query: str) -> bool:
+        """Detects a request to generate an image, as opposed to merely
+        discussing or explaining something visual in text."""
+        lower = query.lower()
+        image_keywords = [
+            "generate an image", "generate a picture", "create an image",
+            "create a picture", "draw a", "draw an", "paint a", "paint an",
+            "sketch a", "sketch an", "make a picture", "make an image",
+            "render an image", "produce an image",
+        ]
+        return any(k in lower for k in image_keywords)
+
+    def _handle_image_generation(self, query: str) -> Optional[TierResult]:
+        """
+        Calls the Fireworks image-generation endpoint instead of
+        chat/completions. Bounded to 2 attempts (image calls are
+        effectively all-or-nothing — no point retrying a malformed
+        response) so a stuck image call can't eat the time budget the
+        text path is already protected from. Returns None on total
+        failure so the caller can fall back to a text answer rather
+        than returning nothing.
+        """
+        if not self.image_model:
+            return None  # no image-capable model in this run's ALLOWED_MODELS
+
+        last_error = None
+        for attempt in range(1, 3):
+            self.call_count += 1
+            try:
+                response = requests.post(
+                    f"{FIREWORKS_API_BASE}/images/generations",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"model": self.image_model, "prompt": query, "n": 1},
+                    timeout=FIREWORKS_TIMEOUT_SEC,
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    items = data.get("data", [])
+                    item = items[0] if items else {}
+                    if item.get("url"):
+                        img_ref = item["url"]
+                    elif item.get("b64_json"):
+                        img_ref = f"data:image/png;base64,{item['b64_json']}"
+                    else:
+                        img_ref = None
+
+                    if img_ref:
+                        logger.info(
+                            f"[Tier 2] Generated image with {self.image_model.split('/')[-1]}"
+                        )
+                        return TierResult(
+                            answer=f"![generated image]({img_ref})",
+                            confidence=0.9,
+                            tier=2,
+                            tokens_used=0,  # image calls don't consume text tokens
+                            raw_response=str(data),
+                        )
+                    last_error = "Image response had no url/b64_json"
+                    break  # malformed success response — retrying won't help
+
+                if response.status_code == 429 or response.status_code >= 500:
+                    last_error = f"Image API error ({response.status_code})"
+                    self._backoff(attempt)
+                    continue
+
+                last_error = f"Image API error {response.status_code}: {response.text[:100]}"
+                break
+
+            except requests.exceptions.Timeout:
+                last_error = f"Image generation timed out after {FIREWORKS_TIMEOUT_SEC}s"
+                self._backoff(attempt)
+            except Exception as e:
+                last_error = f"Image generation error: {e}"
+                break
+
+        logger.warning(f"[Tier 2] Image generation failed, falling back to text: {last_error}")
+        return None
+
+    # ── Main handler ──────────────────────────────────────────────────
 
     def try_handle(self, query: str, context: str = "", intent: str = "unknown") -> TierResult:
         """
-        Call Fireworks with smart model selection and automatic fallback.
-        If the cheapest model fails with a 404, it automatically tries the next largest model.
+        Call Fireworks with smart model selection, bounded retries, and
+        automatic fallback across models. Never raises — on total
+        failure, returns a TierResult with confidence=0.0.
         """
         if not self.api_key:
             return TierResult(answer="", confidence=0.0, tier=2, tokens_used=0,
                                error="FW_API_KEY not set")
 
-        # Get the ordered fallback list of models
-        from config import get_sorted_models_by_intent
+        if self.image_model and self._is_image_prompt(query):
+            image_result = self._handle_image_generation(query)
+            if image_result is not None:
+                return image_result
+            # Image generation unavailable/failed — fall through to the
+            # text path below rather than returning nothing. A text
+            # description is a worse answer than an image, but a much
+            # better one than blank.
+            logger.info("[Tier 2] No image produced; falling back to text description")
+
         models_to_try = get_sorted_models_by_intent(intent, self.available_models)
-        
-        # Build specialized prompt for conciseness and format compliance
-        system_prompt, user_content = self._build_specialized_prompt(query)
-        
+        if not models_to_try:
+            return TierResult(answer="", confidence=0.0, tier=2, tokens_used=0,
+                               error="No available (non-image) models to call")
+
+        system_prompt, user_content = self._build_specialized_prompt(query, intent)
         if context:
             user_content = f"Context: {context}\n\n{user_content}"
-            
+
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content}
+            {"role": "user", "content": user_content},
         ]
+        max_tokens = FIREWORKS_MAX_TOKENS_COMPLEX if intent in COMPLEX_INTENTS else FIREWORKS_MAX_TOKENS_SIMPLE
 
         last_error = None
-        
-        # Try each model in the fallback list
+        total_attempts = 0
+
         for model_to_try in models_to_try:
+            if total_attempts >= TIER2_MAX_TOTAL_ATTEMPTS:
+                break
             for attempt in range(1, FIREWORKS_MAX_RETRIES + 1):
+                if total_attempts >= TIER2_MAX_TOTAL_ATTEMPTS:
+                    break
+                total_attempts += 1
                 self.call_count += 1
                 try:
                     response = requests.post(
@@ -436,7 +710,7 @@ class TierTwo:
                         json={
                             "model": model_to_try,
                             "messages": messages,
-                            "max_tokens": FIREWORKS_MAX_TOKENS,
+                            "max_tokens": max_tokens,
                             "temperature": FIREWORKS_TEMPERATURE,
                         },
                         timeout=FIREWORKS_TIMEOUT_SEC,
@@ -444,9 +718,11 @@ class TierTwo:
 
                     if response.status_code == 200:
                         data = response.json()
-                        answer = data["choices"][0]["message"]["content"].strip()
+                        raw_answer = data["choices"][0]["message"]["content"].strip()
                         tokens_used = data.get("usage", {}).get("total_tokens", 0)
                         self.total_tokens_used += tokens_used
+
+                        answer = self._post_process_answer(raw_answer, query)
 
                         return TierResult(
                             answer=answer,
@@ -466,11 +742,13 @@ class TierTwo:
                         self._backoff(attempt)
                         continue
 
-                    # Client error (404 Not Found, 400 Bad Request, etc.)
-                    # DO NOT RETRY. Break inner loop and try the NEXT model in the list.
+                    # Non-retryable client error — move on to the next model
                     last_error = f"API error {response.status_code}: {response.text[:100]}"
-                    logger.warning(f"[Tier 2] Model {model_to_try.split('/')[-1]} failed with client error. Falling back to next model.")
-                    break 
+                    logger.warning(
+                        f"[Tier 2] {model_to_try.split('/')[-1]} failed "
+                        f"({response.status_code}); trying next model"
+                    )
+                    break
 
                 except requests.exceptions.Timeout:
                     last_error = f"Timeout after {FIREWORKS_TIMEOUT_SEC}s"
@@ -478,13 +756,18 @@ class TierTwo:
                 except requests.exceptions.ConnectionError as e:
                     last_error = f"Connection error: {e}"
                     self._backoff(attempt)
+                except (KeyError, IndexError, ValueError) as e:
+                    last_error = f"Malformed response: {e}"
+                    break
                 except Exception as e:
                     last_error = f"Unexpected error: {e}"
                     self._backoff(attempt)
 
-        # If we exhausted all models and retries
         self.failure_count += 1
-        logger.error(f"[Tier 2] All models and retries exhausted: {last_error}")
+        logger.error(
+            f"[Tier 2] Exhausted {total_attempts} attempt(s) across "
+            f"{len(models_to_try)} model(s): {last_error}"
+        )
         return TierResult(answer="", confidence=0.0, tier=2, tokens_used=0, error=last_error)
 
     def _backoff(self, attempt: int):
