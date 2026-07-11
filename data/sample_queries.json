@@ -1,0 +1,19 @@
+{
+  "queries": [
+    {"text": "what is 47 * 12", "category": "computation", "expected_keywords": ["564"]},
+    {"text": "what is 100 / 4 + 7", "category": "computation", "expected_keywords": ["32"]},
+    {"text": "What is the capital of France?", "category": "knowledge", "expected_keywords": ["Paris"]},
+    {"text": "Explain how photosynthesis works", "category": "knowledge", "expected_keywords": ["light", "energy", "plant"]},
+    {"text": "Write a Python function to reverse a string", "category": "generation", "expected_keywords": ["def", "return"]},
+    {"text": "Explain how transformers work in machine learning and write a Python function that implements multi-head attention", "category": "compound", "expected_keywords": ["attention", "def"]},
+    {"text": "Compare REST and GraphQL APIs", "category": "analysis", "expected_keywords": ["REST", "GraphQL"]},
+    {"text": "List five benefits of regular exercise", "category": "enumeration", "expected_keywords": ["exercise"]},
+    {"text": "Summarize the plot of Romeo and Juliet", "category": "summarization", "expected_keywords": ["Romeo", "Juliet"]},
+    {"text": "Translate 'good morning' to Spanish", "category": "translation", "expected_keywords": ["buenos", "dias"]},
+    {"text": "1. What is 9 squared? 2. Name three prime numbers. 3. What year did WWII end?", "category": "compound-numbered", "expected_keywords": ["81", "1945"]},
+    {"text": "Solve for x: 2x + 5 = 17", "category": "computation", "expected_keywords": ["6"]},
+    {"text": "What is the boiling point of water in Celsius?", "category": "knowledge", "expected_keywords": ["100"]},
+    {"text": "Write a haiku about autumn; then explain what a haiku is", "category": "compound-semicolon", "expected_keywords": []},
+    {"text": "Describe the water cycle and create a diagram description for it", "category": "compound", "expected_keywords": ["evaporation", "condensation"]}
+  ]
+}

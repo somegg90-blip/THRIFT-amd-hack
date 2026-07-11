@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>THRIFT — Token Routing Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:ital,wght@0,500;0,700;0,900;1,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --black:#050506;
+  --graphite:#111214;
+  --panel:#16171a;
+  --line:#2a2c30;
+  --steel:#9a9fa6;
+  --steel-dim:#5c6066;
+  --silver:#d4d7db;
+  --orange:#ff3d1a;
+  --orange-dim:#7a2412;
+  --white:#f2f1ec;
+  --green:#22c55e;
+  --blue:#3b82f6;
+  --yellow:#f59e0b;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--black);color:var(--white);
+  font-family:'Archivo',sans-serif;
+  overflow-x:hidden;-webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--orange);color:var(--black);}
+.grain{
+  position:fixed;inset:0;pointer-events:none;z-index:500;
+  opacity:.04;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+a{color:inherit;text-decoration:none;}
+.mono{font-family:'JetBrains Mono',monospace;}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--orange);font-weight:700;}
+h1,h2,h3,h4{font-family:'Anton',sans-serif;text-transform:uppercase;font-weight:400;letter-spacing:.01em;line-height:.92;}
+
+/* ── NAV ── */
+header{
+  position:sticky;top:0;z-index:200;
+  background:rgba(5,5,6,.92);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);
+}
+nav{
+  max-width:1400px;margin:0 auto;padding:0 32px;
+  height:68px;display:flex;align-items:center;justify-content:space-between;
+}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-mark{
+  width:30px;height:30px;background:var(--orange);
+  clip-path:polygon(0 0,100% 0,100% 55%,55% 55%,55% 100%,0 100%);
+  flex-shrink:0;
+}
+.brand-name{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:.1em;}
+.brand-sub{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.2em;color:var(--steel-dim);text-transform:uppercase;margin-top:1px;}
+.nav-right{display:flex;align-items:center;gap:28px;}
+.nav-stat{text-align:right;}
+.nav-stat-val{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--white);}
+.nav-stat-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--steel-dim);text-transform:uppercase;margin-top:2px;}
+.nav-divider{width:1px;height:32px;background:var(--line);}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse-dot 2s ease-in-out infinite;}
+@keyframes pulse-dot{0%,100%{opacity:1;}50%{opacity:.3;}}
+.nav-live{display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--steel-dim);text-transform:uppercase;}
+
+/* ── HERO STRIP ── */
+.hero{
+  position:relative;overflow:hidden;
+  border-bottom:1px solid var(--line);
+  background:radial-gradient(ellipse 1000px 400px at 70% -20%, rgba(255,61,26,.1), transparent 55%);
+}
+.hero-grid-bg{
+  position:absolute;inset:0;opacity:.25;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:56px 56px;
+  mask-image:linear-gradient(180deg,black 30%,transparent 100%);
+}
+canvas#waveform{position:absolute;bottom:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1;}
+.hero-inner{
+  position:relative;z-index:2;
+  max-width:1400px;margin:0 auto;padding:52px 32px 0;
+  display:grid;grid-template-columns:1fr auto;gap:40px;align-items:end;
+}
+.hero-title{font-size:clamp(48px,7vw,96px);line-height:.88;}
+.hero-title em{font-style:normal;color:var(--orange);}
+.hero-desc{color:var(--steel);font-size:14px;line-height:1.6;font-weight:500;max-width:420px;margin-top:18px;}
+.hero-metrics{
+  display:flex;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-bottom:none;align-self:flex-end;
+}
+.hero-metric{
+  background:var(--black);padding:20px 26px;min-width:130px;
+}
+.hero-metric-val{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;color:var(--white);}
+.hero-metric-val.green{color:var(--green);}
+.hero-metric-val.orange{color:var(--orange);}
+.hero-metric-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.14em;color:var(--steel-dim);text-transform:uppercase;margin-top:5px;}
+
+/* ── MARQUEE ── */
+.marquee{border-bottom:1px solid var(--line);background:var(--graphite);overflow:hidden;padding:13px 0;}
+.marquee-track{display:flex;gap:40px;width:max-content;animation:scroll 32s linear infinite;}
+.marquee span{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--steel-dim);white-space:nowrap;}
+.marquee span b{color:var(--orange);}
+@keyframes scroll{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+
+/* ── MAIN LAYOUT ── */
+.main{max-width:1400px;margin:0 auto;padding:0 32px 60px;display:grid;grid-template-columns:1fr 400px;gap:1px;background:var(--line);}
+.main-left{background:var(--black);display:flex;flex-direction:column;gap:1px;}
+.main-right{background:var(--black);display:flex;flex-direction:column;gap:1px;}
+
+/* ── PANELS ── */
+.panel{border-bottom:1px solid var(--line);}
+.panel-head{
+  padding:16px 24px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.panel-title{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--steel-dim);}
+.panel-badge{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--orange);background:rgba(255,61,26,.1);border:1px solid var(--orange-dim);padding:3px 9px;}
+.panel-body{padding:24px;}
+
+/* ── QUERY INPUT ── */
+.query-wrap{position:relative;}
+textarea{
+  width:100%;background:var(--graphite);border:1px solid var(--line);
+  color:var(--white);font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;
+  padding:16px 18px;resize:none;height:100px;outline:none;
+  transition:border-color .2s;line-height:1.6;
+}
+textarea:focus{border-color:var(--orange);}
+textarea::placeholder{color:var(--steel-dim);}
+.query-actions{display:flex;gap:12px;margin-top:12px;align-items:center;}
+.btn-run{
+  background:var(--orange);color:var(--black);
+  font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;
+  letter-spacing:.14em;text-transform:uppercase;
+  padding:13px 26px;border:none;cursor:pointer;
+  clip-path:polygon(0 0,100% 0,100% 100%,12px 100%,0 calc(100% - 12px));
+  transition:transform .15s,background .15s;
+}
+.btn-run:hover{background:var(--white);transform:translateY(-1px);}
+.btn-run:disabled{background:var(--line);color:var(--steel-dim);cursor:not-allowed;transform:none;}
+.btn-ghost{
+  background:transparent;color:var(--steel);border:1px solid var(--line);
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  padding:13px 18px;cursor:pointer;transition:all .15s;
+}
+.btn-ghost:hover{border-color:var(--steel);color:var(--white);}
+.status-line{
+  display:flex;align-items:center;gap:8px;
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;color:var(--steel-dim);
+  text-transform:uppercase;margin-left:auto;
+}
+.status-dot-sm{width:6px;height:6px;border-radius:50%;background:var(--steel-dim);}
+.status-dot-sm.active{background:var(--orange);box-shadow:0 0 6px var(--orange);}
+.status-dot-sm.ok{background:var(--green);box-shadow:0 0 6px var(--green);}
+
+/* ── EXAMPLE CHIPS ── */
+.examples{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
+.chip{
+  background:var(--graphite);border:1px solid var(--line);
+  font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.08em;
+  color:var(--steel-dim);padding:6px 12px;cursor:pointer;text-transform:uppercase;
+  transition:all .15s;
+}
+.chip:hover{border-color:var(--orange);color:var(--orange);}
+
+/* ── DECOMP ── */
+.decomp-empty{
+  padding:40px 0;text-align:center;
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;
+  color:var(--steel-dim);text-transform:uppercase;
+}
+.decomp-empty .big-icon{font-size:28px;margin-bottom:12px;opacity:.4;}
+.subtask-list{display:flex;flex-direction:column;gap:1px;background:var(--line);}
+.subtask-item{
+  background:var(--graphite);padding:16px 20px;
+  display:grid;grid-template-columns:28px 1fr auto;gap:14px;align-items:start;
+}
+.subtask-num{
+  font-family:'Anton',sans-serif;font-size:20px;line-height:1;
+  color:var(--orange-dim);margin-top:2px;
+}
+.subtask-text{font-size:13px;font-weight:500;line-height:1.5;color:var(--white);}
+.subtask-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.tag{
+  font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;
+  text-transform:uppercase;padding:3px 8px;border:1px solid;
+}
+.tag-intent{color:#93c5fd;border-color:rgba(59,130,246,.3);background:rgba(59,130,246,.07);}
+.tag-t0{color:#86efac;border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.07);}
+.tag-t1{color:#93c5fd;border-color:rgba(59,130,246,.3);background:rgba(59,130,246,.07);}
+.tag-t2{color:#fcd34d;border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.07);}
+.tag-degraded{color:#fca5a5;border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.07);}
+.subtask-conf{
+  font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;
+  color:var(--white);text-align:right;line-height:1;
+}
+.subtask-conf small{display:block;font-size:9px;letter-spacing:.1em;color:var(--steel-dim);text-transform:uppercase;margin-top:3px;font-weight:400;}
+.split-notice{
+  font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--green);padding:10px 0 14px;
+  display:flex;align-items:center;gap:8px;
+}
+.split-notice span{width:1px;height:14px;background:var(--green);display:inline-block;}
+
+/* ── ANSWER ── */
+.answer-text{
+  font-size:14px;font-weight:500;line-height:1.75;color:var(--white);
+  white-space:pre-wrap;word-break:break-word;min-height:80px;
+}
+.answer-empty-state{
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;
+  color:var(--steel-dim);text-transform:uppercase;
+}
+.answer-ruler{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+  margin-top:20px;border-top:1px solid var(--line);
+}
+.answer-ruler-cell{background:var(--graphite);padding:12px 14px;}
+.answer-ruler-val{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--white);}
+.answer-ruler-lbl{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.1em;color:var(--steel-dim);text-transform:uppercase;margin-top:3px;}
+
+/* ── CHART ── */
+.chart-wrap{height:180px;position:relative;}
+
+/* ── TIER BARS ── */
+.tier-row{padding:14px 0;border-bottom:1px solid var(--line);}
+.tier-row:last-child{border-bottom:none;}
+.tier-row-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;}
+.tier-row-name{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--steel);}
+.tier-row-pct{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;}
+.tier-bar-track{height:4px;background:var(--graphite);overflow:hidden;}
+.tier-bar-fill{height:100%;transition:width .6s cubic-bezier(.4,0,.2,1);}
+
+/* ── HISTORY ── */
+.history-list{display:flex;flex-direction:column;gap:1px;background:var(--line);}
+.history-item{
+  background:var(--black);padding:12px 16px;
+  display:flex;gap:14px;align-items:center;
+  transition:background .15s;cursor:default;
+}
+.history-item:hover{background:var(--graphite);}
+.history-idx{font-family:'Anton',sans-serif;font-size:18px;color:var(--orange-dim);min-width:22px;}
+.history-q{font-size:12px;font-weight:500;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
+.history-tok{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--yellow);flex-shrink:0;}
+.history-tiers{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--steel-dim);flex-shrink:0;}
+.history-empty{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--steel-dim);padding:20px;text-align:center;}
+
+/* ── SAVINGS CALLOUT ── */
+.savings-callout{
+  background:linear-gradient(135deg,rgba(255,61,26,.08),transparent);
+  border:1px solid var(--orange-dim);
+  padding:20px 22px;margin-bottom:1px;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.savings-num{font-family:'Anton',sans-serif;font-size:52px;line-height:1;color:var(--orange);}
+.savings-sub{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--steel-dim);margin-top:4px;}
+.savings-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--steel);max-width:160px;line-height:1.6;text-align:right;}
+
+::-webkit-scrollbar{width:6px;}
+::-webkit-scrollbar-track{background:var(--black);}
+::-webkit-scrollbar-thumb{background:var(--line);}
+</style>
+</head>
+<body>
+<div class="grain"></div>
+
+<!-- ── NAV ── -->
+<header>
+  <nav>
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <div class="brand-name">THRIFT</div>
+        <div class="brand-sub">Token Heuristic Routing with Intelligent Fallback Trees</div>
+      </div>
+    </div>
+    <div class="nav-right">
+      <div class="nav-stat">
+        <div class="nav-stat-val" id="nav-savings">—</div>
+        <div class="nav-stat-lbl">Token Savings</div>
+      </div>
+      <div class="nav-divider"></div>
+      <div class="nav-stat">
+        <div class="nav-stat-val" id="nav-tokens">0</div>
+        <div class="nav-stat-lbl">Remote Tokens</div>
+      </div>
+      <div class="nav-divider"></div>
+      <div class="nav-stat">
+        <div class="nav-stat-val" id="nav-queries">0</div>
+        <div class="nav-stat-lbl">Queries</div>
+      </div>
+      <div class="nav-divider"></div>
+      <div class="nav-live"><div class="live-dot"></div>Live</div>
+    </div>
+  </nav>
+</header>
+
+<!-- ── HERO ── -->
+<section class="hero">
+  <div class="hero-grid-bg"></div>
+  <canvas id="waveform"></canvas>
+  <div class="hero-inner">
+    <div>
+      <span class="eyebrow">AMD Developer Hackathon ACT II — Track 1</span>
+      <h1 style="margin-top:14px;">Route <em>smarter.</em><br>Pay for less.</h1>
+      <p class="hero-desc">Most routers make one decision per query. THRIFT makes one per <em style="color:var(--white);font-style:normal;">piece</em> of a query — decomposing compound requests into atomic subtasks and routing each through a 3-tier cascade. Only the hardest pieces touch the paid API.</p>
+    </div>
+    <div class="hero-metrics">
+      <div class="hero-metric">
+        <div class="hero-metric-val orange" id="hero-savings">—</div>
+        <div class="hero-metric-lbl">Token Saved</div>
+      </div>
+      <div class="hero-metric">
+        <div class="hero-metric-val" id="hero-queries">0</div>
+        <div class="hero-metric-lbl">Queries Run</div>
+      </div>
+      <div class="hero-metric">
+        <div class="hero-metric-val green" id="hero-t0">0%</div>
+        <div class="hero-metric-lbl">Free (Tier 0)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── MARQUEE ── -->
+<div class="marquee"><div class="marquee-track" id="marquee-track"></div></div>
+
+<!-- ── MAIN ── -->
+<div class="main">
+
+  <!-- LEFT COLUMN -->
+  <div class="main-left">
+
+    <!-- Query Input -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Query Input</span>
+        <span class="panel-badge">Ctrl + Enter to Run</span>
+      </div>
+      <div class="panel-body">
+        <textarea id="query-input" placeholder="Try a compound query — e.g. 'Explain how transformers work and write a Python function for multi-head attention'"></textarea>
+        <div class="query-actions">
+          <button class="btn-run" id="submit-btn" onclick="submitQuery()">Run Query</button>
+          <button class="btn-ghost" onclick="resetSession()">Reset</button>
+          <div class="status-line">
+            <div class="status-dot-sm" id="status-dot"></div>
+            <span id="status-msg">Ready</span>
+          </div>
+        </div>
+        <div class="examples">
+          <span class="chip" onclick="setEx(this)">47 * 12</span>
+          <span class="chip" onclick="setEx(this)">Explain recursion and write a Python factorial function</span>
+          <span class="chip" onclick="setEx(this)">Capital of France?</span>
+          <span class="chip" onclick="setEx(this)">1. What is 9 squared? 2. Name three primes. 3. When did WWII end?</span>
+          <span class="chip" onclick="setEx(this)">Summarize the water cycle; explain how clouds form</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Decomposition -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Decomposition & Routing</span>
+        <span id="decomp-badge" class="panel-badge" style="display:none;"></span>
+      </div>
+      <div class="panel-body" id="decomp-panel">
+        <div class="decomp-empty">
+          <div class="big-icon">◈</div>
+          <div>Subtask routing will appear here</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Answer -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Final Answer</span>
+        <span id="answer-latency" class="panel-badge" style="display:none;"></span>
+      </div>
+      <div class="panel-body">
+        <div id="answer-box" class="answer-text">
+          <span class="answer-empty-state">Answer will appear here after query runs.</span>
+        </div>
+        <div class="answer-ruler" id="answer-ruler" style="display:none;">
+          <div class="answer-ruler-cell"><div class="answer-ruler-val" id="ar-tokens">0</div><div class="answer-ruler-lbl">Remote Tokens</div></div>
+          <div class="answer-ruler-cell"><div class="answer-ruler-val" id="ar-subtasks">0</div><div class="answer-ruler-lbl">Subtasks</div></div>
+          <div class="answer-ruler-cell"><div class="answer-ruler-val" id="ar-tiers">—</div><div class="answer-ruler-lbl">Tiers Used</div></div>
+          <div class="answer-ruler-cell"><div class="answer-ruler-val" id="ar-latency">—</div><div class="answer-ruler-lbl">Latency</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT COLUMN -->
+  <div class="main-right">
+
+    <!-- Savings callout -->
+    <div class="savings-callout">
+      <div>
+        <div class="savings-num" id="savings-big">—</div>
+        <div class="savings-sub">Est. Token Savings vs All-Remote</div>
+      </div>
+      <div class="savings-label">Only the hardest subtasks reach the paid API tier</div>
+    </div>
+
+    <!-- Savings chart -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Token Savings Over Time</span>
+        <span class="panel-badge">▲ THRIFT vs Naive</span>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap"><canvas id="chart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Tier usage -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Tier Usage</span>
+      </div>
+      <div class="panel-body">
+        <div class="tier-row">
+          <div class="tier-row-head">
+            <span class="tier-row-name">Tier 0 — Rule-based (Free)</span>
+            <span class="tier-row-pct" id="pct0" style="color:var(--green);">0%</span>
+          </div>
+          <div class="tier-bar-track"><div class="tier-bar-fill" id="bar0" style="width:0%;background:var(--green);"></div></div>
+        </div>
+        <div class="tier-row">
+          <div class="tier-row-head">
+            <span class="tier-row-name">Tier 1 — Local Model (Free)</span>
+            <span class="tier-row-pct" id="pct1" style="color:var(--blue);">0%</span>
+          </div>
+          <div class="tier-bar-track"><div class="tier-bar-fill" id="bar1" style="width:0%;background:var(--blue);"></div></div>
+        </div>
+        <div class="tier-row">
+          <div class="tier-row-head">
+            <span class="tier-row-name">Tier 2 — Fireworks API (Paid)</span>
+            <span class="tier-row-pct" id="pct2" style="color:var(--yellow);">0%</span>
+          </div>
+          <div class="tier-bar-track"><div class="tier-bar-fill" id="bar2" style="width:0%;background:var(--yellow);"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Query History -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Query History</span>
+        <span class="panel-badge" id="hist-count">0 Queries</span>
+      </div>
+      <div id="history-list">
+        <div class="history-empty">No queries yet</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────
+const API = '';
+let history = [];
+let chart = null;
+let thriftData = [], naiveData = [], chartLabels = [];
+
+// ── Waveform canvas ──────────────────────────────────────────────
+const cv = document.getElementById('waveform');
+const cx = cv.getContext('2d');
+let wt = 0;
+function resizeWave(){
+  cv.width = cv.offsetWidth * devicePixelRatio;
+  cv.height = cv.offsetHeight * devicePixelRatio;
+  cx.scale(devicePixelRatio, devicePixelRatio);
+}
+function drawWave(){
+  const w = cv.offsetWidth, h = cv.offsetHeight;
+  cx.clearRect(0,0,w,h);
+  cx.beginPath();
+  const base = h * 0.7;
+  cx.moveTo(-20, base);
+  for(let x=-20;x<=w+20;x+=3){
+    const p=(x+wt)*0.014;
+    let y=base+Math.sin(p)*5;
+    const sp=Math.sin(p*0.18);
+    if(sp>0.9) y-=70*(sp-0.9)/0.1;
+    if(sp<-0.95) y+=30*(-sp-0.95)/0.05;
+    cx.lineTo(x,y);
+  }
+  cx.strokeStyle='rgba(255,61,26,0.45)';
+  cx.lineWidth=1.5;
+  cx.shadowColor='rgba(255,61,26,0.4)';
+  cx.shadowBlur=10;
+  cx.stroke();
+  wt+=1.4;
+  requestAnimationFrame(drawWave);
+}
+window.addEventListener('resize', resizeWave);
+resizeWave(); drawWave();
+
+// ── Marquee ──────────────────────────────────────────────────────
+const items=['DECOMPOSE BEFORE ROUTING','ZERO TOKENS FOR LOCAL','3-TIER CASCADE','AMD ROCM INFRASTRUCTURE','FIREWORKS AI FALLBACK','CONFIDENCE-GATED ESCALATION','QUERY SPLITTING ENGINE','THRIFT NOT SPEND'];
+const track=document.getElementById('marquee-track');
+const seq=[...items,...items].map(w=>`<span><b>◆</b> ${w}</span>`).join('');
+track.innerHTML=seq+seq;
+
+// ── Chart ────────────────────────────────────────────────────────
+function initChart(){
+  const ctx=document.getElementById('chart').getContext('2d');
+  chart=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:chartLabels,
+      datasets:[
+        {label:'THRIFT',data:thriftData,borderColor:'#ff3d1a',backgroundColor:'rgba(255,61,26,0.08)',fill:true,tension:0.4,pointRadius:3,pointBackgroundColor:'#ff3d1a'},
+        {label:'Naive',data:naiveData,borderColor:'#2a2c30',backgroundColor:'rgba(42,44,48,0.15)',fill:true,tension:0.4,pointRadius:3,pointBackgroundColor:'#2a2c30',borderDash:[4,3]}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{backgroundColor:'#16171a',borderColor:'#2a2c30',borderWidth:1,titleColor:'#f2f1ec',bodyColor:'#9a9fa6'}
+      },
+      scales:{
+        x:{ticks:{color:'#5c6066',font:{size:9,family:'JetBrains Mono'}},grid:{color:'#16171a'}},
+        y:{ticks:{color:'#5c6066',font:{size:9,family:'JetBrains Mono'}},grid:{color:'#16171a'},beginAtZero:true}
+      }
+    }
+  });
+}
+
+// ── Helpers ──────────────────────────────────────────────────────
+function setStatus(msg, state='idle'){
+  document.getElementById('status-msg').textContent=msg;
+  const d=document.getElementById('status-dot');
+  d.className='status-dot-sm'+(state==='busy'?' active':state==='ok'?' ok':'');
+}
+
+function setEx(el){ document.getElementById('query-input').value=el.textContent; }
+
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function tierTag(t){
+  const m={0:['T0 · Heuristic','tag-t0'],1:['T1 · Local','tag-t1'],2:['T2 · Fireworks','tag-t2']};
+  const [label,cls]=m[t]||['Degraded','tag-degraded'];
+  return `<span class="tag ${cls}">${label}</span>`;
+}
+
+// ── Render decomp ────────────────────────────────────────────────
+function renderDecomp(subtasks, cascadeResults){
+  const panel=document.getElementById('decomp-panel');
+  const badge=document.getElementById('decomp-badge');
+
+  if(!subtasks||subtasks.length===0){
+    panel.innerHTML='<div class="decomp-empty"><div class="big-icon">◈</div><div>No subtasks</div></div>';
+    badge.style.display='none';
+    return;
+  }
+
+  if(subtasks.length>1){
+    badge.textContent=`Split → ${subtasks.length} subtasks`;
+    badge.style.display='';
+    badge.style.color='var(--green)';
+    badge.style.borderColor='rgba(34,197,94,.3)';
+    badge.style.background='rgba(34,197,94,.07)';
+  } else {
+    badge.textContent='Single Task';
+    badge.style.display='';
+  }
+
+  const notice = subtasks.length>1
+    ? `<div class="split-notice"><span></span>Decomposed into ${subtasks.length} independently routed subtasks<span></span></div>`
+    : '';
+
+  const items=subtasks.map((st,i)=>{
+    const cr=cascadeResults[i]||{};
+    const conf=cr.confidence!=null?Math.round(cr.confidence*100)+'%':'—';
+    const intent=st.intent&&st.intent!=='unknown'?`<span class="tag tag-intent">${st.intent}</span>`:'';
+    const tier=cr.tier_used!=null?tierTag(cr.tier_used):'';
+    const degraded=cr.degraded?`<span class="tag tag-degraded">Degraded</span>`:'';
+    return `
+    <div class="subtask-item">
+      <div class="subtask-num">${String(i+1).padStart(2,'0')}</div>
+      <div>
+        <div class="subtask-text">${esc(st.text)}</div>
+        <div class="subtask-meta">${intent}${tier}${degraded}</div>
+      </div>
+      <div class="subtask-conf">${conf}<small>Confidence</small></div>
+    </div>`;
+  }).join('');
+
+  panel.innerHTML=notice+`<div class="subtask-list">${items}</div>`;
+}
+
+// ── Render answer ────────────────────────────────────────────────
+function renderAnswer(data, latency){
+  document.getElementById('answer-box').textContent=data.answer||'[No answer generated]';
+  const ruler=document.getElementById('answer-ruler');
+  ruler.style.display='grid';
+  document.getElementById('ar-tokens').textContent=data.tokens_used??0;
+  document.getElementById('ar-subtasks').textContent=data.subtask_count??1;
+  document.getElementById('ar-tiers').textContent=(data.tiers_used||[]).map(t=>['T0','T1','T2'][t]||'?').join('→');
+  document.getElementById('ar-latency').textContent=latency.toFixed(2)+'s';
+  const lb=document.getElementById('answer-latency');
+  lb.textContent=latency.toFixed(2)+'s';
+  lb.style.display='';
+}
+
+// ── Refresh stats ────────────────────────────────────────────────
+async function refreshStats(){
+  try{
+    const r=await fetch(`${API}/stats`);
+    if(!r.ok)return;
+    const s=await r.json();
+    const q=s.total_queries??0;
+    const tok=s.total_tokens_used??0;
+    const sav=s.estimated_token_savings_pct;
+    const savStr=sav!=null?sav.toFixed(1)+'%':'—';
+    document.getElementById('nav-savings').textContent=savStr;
+    document.getElementById('nav-tokens').textContent=tok;
+    document.getElementById('nav-queries').textContent=q;
+    document.getElementById('hero-savings').textContent=savStr;
+    document.getElementById('hero-queries').textContent=q;
+    document.getElementById('savings-big').textContent=savStr;
+    const pcts=(s.cascade_stats||{}).tier_usage_pct||{};
+    ['0','1','2'].forEach(t=>{
+      const v=pcts[t]||0;
+      document.getElementById(`bar${t}`).style.width=v+'%';
+      document.getElementById(`pct${t}`).textContent=v.toFixed(1)+'%';
+    });
+    const t0pct=pcts['0']||0;
+    document.getElementById('hero-t0').textContent=t0pct.toFixed(1)+'%';
+  }catch(e){}
+}
+
+// ── Add history ──────────────────────────────────────────────────
+function addHistory(query, tokensUsed, tiersUsed){
+  const n=history.length;
+  const list=document.getElementById('history-list');
+  if(list.querySelector('.history-empty')) list.innerHTML='<div class="history-list">';
+  const tierStr=(tiersUsed||[]).map(t=>['T0','T1','T2'][t]||'?').join('→');
+  const item=document.createElement('div');
+  item.className='history-item';
+  item.innerHTML=`
+    <div class="history-idx">${String(n).padStart(2,'0')}</div>
+    <div class="history-q" title="${esc(query)}">${esc(query)}</div>
+    <div class="history-tok">${tokensUsed} tok</div>
+    <div class="history-tiers">${tierStr}</div>`;
+  list.insertBefore(item, list.firstChild);
+  document.getElementById('hist-count').textContent=`${n} Quer${n===1?'y':'ies'}`;
+}
+
+// ── Update chart ─────────────────────────────────────────────────
+function updateChart(n, thrift, naive){
+  chartLabels.push(`Q${n}`);
+  thriftData.push(thrift);
+  naiveData.push(naive);
+  if(chart)chart.update();
+}
+
+// ── Submit ───────────────────────────────────────────────────────
+async function submitQuery(){
+  const query=document.getElementById('query-input').value.trim();
+  if(!query){setStatus('Enter a query first');return;}
+  const btn=document.getElementById('submit-btn');
+  btn.disabled=true;
+  btn.textContent='Running…';
+  setStatus('Routing…','busy');
+  document.getElementById('answer-box').innerHTML='<span class="answer-empty-state">Processing…</span>';
+  document.getElementById('answer-ruler').style.display='none';
+  document.getElementById('decomp-panel').innerHTML='<div class="decomp-empty"><span style="font-size:12px;letter-spacing:.2em;">◌ Decomposing…</span></div>';
+  const start=Date.now();
+  try{
+    const res=await fetch(`${API}/query`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query})});
+    const latency=(Date.now()-start)/1000;
+    if(!res.ok){const e=await res.json().catch(()=>({detail:res.statusText}));throw new Error(e.detail||`HTTP ${res.status}`);}
+    const data=await res.json();
+    history.push({query,data,latency});
+    renderDecomp(data.subtasks,data.cascade_results||[]);
+    renderAnswer(data,latency);
+    addHistory(query,data.tokens_used,data.tiers_used);
+    const naive=(data.subtask_count||1)*300;
+    updateChart(history.length,data.tokens_used,naive);
+    await refreshStats();
+    setStatus(`Done — ${data.tokens_used} remote tokens used`,'ok');
+  }catch(e){
+    setStatus(`Error: ${e.message}`,'idle');
+    document.getElementById('answer-box').innerHTML=`<span style="color:var(--orange)">Error: ${esc(e.message)}</span>`;
+    document.getElementById('decomp-panel').innerHTML='<div class="decomp-empty"><div>⚠ Request failed — is the server running?</div></div>';
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Run Query';
+  }
+}
+
+// ── Reset ────────────────────────────────────────────────────────
+async function resetSession(){
+  try{await fetch(`${API}/reset`,{method:'POST'});}catch(e){}
+  history=[];thriftData=[];naiveData=[];chartLabels=[];
+  if(chart)chart.update();
+  document.getElementById('query-input').value='';
+  document.getElementById('answer-box').innerHTML='<span class="answer-empty-state">Answer will appear here after query runs.</span>';
+  document.getElementById('answer-ruler').style.display='none';
+  document.getElementById('decomp-panel').innerHTML='<div class="decomp-empty"><div class="big-icon">◈</div><div>Subtask routing will appear here</div></div>';
+  document.getElementById('history-list').innerHTML='<div class="history-empty">No queries yet</div>';
+  document.getElementById('decomp-badge').style.display='none';
+  document.getElementById('answer-latency').style.display='none';
+  ['0','1','2'].forEach(t=>{document.getElementById(`bar${t}`).style.width='0%';document.getElementById(`pct${t}`).textContent='0%';});
+  ['nav-savings','nav-tokens','nav-queries','hero-savings','hero-queries','savings-big'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.textContent=id.includes('queries')||id.includes('tokens')?'0':'—';
+  });
+  document.getElementById('hero-t0').textContent='0%';
+  document.getElementById('hist-count').textContent='0 Queries';
+  setStatus('Session reset','idle');
+}
+
+// ── Init ─────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',()=>{
+  initChart();
+  refreshStats();
+  document.getElementById('query-input').addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))submitQuery();
+  });
+});
+</script>
+</body>
+</html>

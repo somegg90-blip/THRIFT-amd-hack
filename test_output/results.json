@@ -1,0 +1,34 @@
+[
+  {
+    "task_id": "practice-01",
+    "answer": "[Unable to generate a confident answer for: \"What is the capital of Australia, and what body of water is it near?\"]"
+  },
+  {
+    "task_id": "practice-02",
+    "answer": "[Unable to generate a confident answer for: \"A store has 240 items. It sells 15% on Monday and 60 more on Tuesday. How many items remain?\"]"
+  },
+  {
+    "task_id": "practice-03",
+    "answer": "[Unable to generate a confident answer for: \"Classify the sentiment of this review: The battery life is great, but the screen scratches too easily.\"]"
+  },
+  {
+    "task_id": "practice-04",
+    "answer": "[Unable to generate a confident answer for: \"Summarize the following in exactly one sentence: The Amazon rainforest, often referred to as the lungs of the Earth, produces approximately 20% of the world's oxygen. It spans across nine countries in South America and is home to millions of species of plants, animals, and insects, many of which have yet to be discovered by science.\"]"
+  },
+  {
+    "task_id": "practice-05",
+    "answer": "[Unable to generate a confident answer for: \"Extract all named entities and their types from: Maria Sanchez joined Fireworks AI in Berlin last March.\"]"
+  },
+  {
+    "task_id": "practice-06",
+    "answer": "[Unable to generate a confident answer for: \"This function should return the max of a list but has a bug: def get_max(nums): return nums[0]. Find and fix it.\"]"
+  },
+  {
+    "task_id": "practice-07",
+    "answer": "[Unable to generate a confident answer for: \"Three friends, Sam, Jo, and Lee, each own a different pet: cat, dog, bird. Sam does not own the bird. Jo owns the dog. Who owns the cat?\"]"
+  },
+  {
+    "task_id": "practice-08",
+    "answer": "```python\ndef second_largest(numbers):\n    unique = sorted(set(numbers), reverse=True)\n    return unique[1] if len(unique) > 1 else None\n```"
+  }
+]

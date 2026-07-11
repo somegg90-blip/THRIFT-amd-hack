@@ -1,0 +1,34 @@
+[
+  {
+    "task_id": "practice-01",
+    "answer": "Canberra, near Lake Burley Griffin."
+  },
+  {
+    "task_id": "practice-02",
+    "answer": "144"
+  },
+  {
+    "task_id": "practice-03",
+    "answer": "Mixed"
+  },
+  {
+    "task_id": "practice-04",
+    "answer": "The Amazon rainforest, often called the lungs of the Earth, produces roughly 20% of the world's oxygen and spans nine South American countries, harboring millions of species, many still undiscovered."
+  },
+  {
+    "task_id": "practice-05",
+    "answer": "[{\"entity\": \"Maria Sanchez\", \"type\": \"PERSON\"}, {\"entity\": \"Fireworks AI\", \"type\": \"ORGANIZATION\"}, {\"entity\": \"Berlin\", \"type\": \"LOCATION\"}, {\"entity\": \"last March\", \"type\": \"DATE\"}]"
+  },
+  {
+    "task_id": "practice-06",
+    "answer": "```python\ndef get_max(nums):\n    return max(nums)\n```"
+  },
+  {
+    "task_id": "practice-07",
+    "answer": "Sam owns the cat."
+  },
+  {
+    "task_id": "practice-08",
+    "answer": "```python\ndef second_largest(nums):\n    unique = sorted(set(nums), reverse=True)\n    return unique[1] if len(unique) > 1 else None\n```"
+  }
+]

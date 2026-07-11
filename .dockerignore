@@ -1,0 +1,33 @@
+```text
+# Virtual environments (do not copy local Windows venv)
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.Python
+
+# Local data and testing folders
+data/
+test_input/
+test_output/
+
+# IDEs and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+
+# Documentation (optional)
+*.md
+README.md
+```
