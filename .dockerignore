@@ -31,3 +31,11 @@ Thumbs.db
 *.md
 README.md
 ```
+
+.env
+venv/
+__pycache__/
+*.pyc
+test_input/
+test_output/
+data/

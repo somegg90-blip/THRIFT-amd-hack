@@ -1,34 +1,34 @@
 [
   {
     "task_id": "practice-01",
-    "answer": "[Unable to generate a confident answer for: \"What is the capital of Australia, and what body of water is it near?\"]"
+    "answer": "Canberra, near Lake Burley Griffin"
   },
   {
     "task_id": "practice-02",
-    "answer": "[Unable to generate a confident answer for: \"A store has 240 items. It sells 15% on Monday and 60 more on Tuesday. How many items remain?\"]"
+    "answer": "144"
   },
   {
     "task_id": "practice-03",
-    "answer": "[Unable to generate a confident answer for: \"Classify the sentiment of this review: The battery life is great, but the screen scratches too easily.\"]"
+    "answer": "Mixed"
   },
   {
     "task_id": "practice-04",
-    "answer": "[Unable to generate a confident answer for: \"Summarize the following in exactly one sentence: The Amazon rainforest, often referred to as the lungs of the Earth, produces approximately 20% of the world's oxygen. It spans across nine countries in South America and is home to millions of species of plants, animals, and insects, many of which have yet to be discovered by science.\"]"
+    "answer": "The Amazon rainforest, known as the lungs of the Earth, produces about 20% of the world's oxygen and spans nine South American countries, hosting millions of species including many undiscovered ones."
   },
   {
     "task_id": "practice-05",
-    "answer": "[Unable to generate a confident answer for: \"Extract all named entities and their types from: Maria Sanchez joined Fireworks AI in Berlin last March.\"]"
+    "answer": "[{\"entity\": \"Maria Sanchez\", \"type\": \"PERSON\"}, {\"entity\": \"Fireworks AI\", \"type\": \"ORGANIZATION\"}, {\"entity\": \"Berlin\", \"type\": \"LOCATION\"}, {\"entity\": \"last March\", \"type\": \"DATE\"}]"
   },
   {
     "task_id": "practice-06",
-    "answer": "[Unable to generate a confident answer for: \"This function should return the max of a list but has a bug: def get_max(nums): return nums[0]. Find and fix it.\"]"
+    "answer": "def get_max(nums): return max(nums)"
   },
   {
     "task_id": "practice-07",
-    "answer": "[Unable to generate a confident answer for: \"Three friends, Sam, Jo, and Lee, each own a different pet: cat, dog, bird. Sam does not own the bird. Jo owns the dog. Who owns the cat?\"]"
+    "answer": "Sam"
   },
   {
     "task_id": "practice-08",
-    "answer": "[Unable to generate a confident answer for: \"Write a Python function that returns the second-largest number in a list, handling duplicates correctly.\"]"
+    "answer": "```python\ndef second_largest(numbers):\n    \"\"\"\n    Returns the second-largest unique number in the list.\n    If there are fewer than two distinct numbers, returns None.\n    \"\"\"\n    if len(numbers) < 2:\n        return None\n    # Get unique numbers\n    unique = list(set(numbers))\n    if len(unique) < 2:\n        return None\n    # Find the maximum\n    max_val = max(unique)\n    # Remove the maximum and find the next maximum\n    unique.remove(max_val)\n    return max(unique)\n\n# Alternative one-pass solution without using set (more memory efficient for large lists)\ndef second_largest_one_pass(numbers):\n    if len(numbers) < 2:\n        return None\n    first = second = float('-inf')\n    for num in numbers:\n        if num > first:\n            second = first\n            first = num\n        elif num > second and num != first:\n            second = num\n    return second if second != float('-inf') else None\n```"
   }
 ]
