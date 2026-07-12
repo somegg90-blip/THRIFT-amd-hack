@@ -18,3 +18,23 @@ python-multipart>=0.0.9
 
 # Eval
 numpy>=1.26.0
+
+# Requirements for running Ouro locally
+# CRITICAL: Must use transformers==4.54.1 NOT the latest version
+# The latest transformers breaks Ouro's KV cache
+
+torch>=2.1.0
+transformers==4.54.1
+accelerate>=0.27.0
+
+# API and server
+requests>=2.31.0
+python-dotenv>=1.0.0
+fastapi>=0.110.0
+uvicorn>=0.27.0
+aiofiles>=23.0.0
+python-multipart>=0.0.9
+numpy>=1.26.0
+bitsandbytes
+
+huggingface_hub

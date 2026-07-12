@@ -29,6 +29,6 @@
   },
   {
     "task_id": "practice-08",
-    "answer": "```python\ndef second_largest(numbers):\n    unique = sorted(set(numbers), reverse=True)\n    return unique[1] if len(unique) > 1 else None\n```"
+    "answer": "[Unable to generate a confident answer for: \"Write a Python function that returns the second-largest number in a list, handling duplicates correctly.\"]"
   }
 ]

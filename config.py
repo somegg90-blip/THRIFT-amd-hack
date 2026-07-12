@@ -7,12 +7,13 @@ import re
 from dotenv import load_dotenv
 load_dotenv()
 
-# ── Hardcoded Fallbacks (safety net if judges forget to inject env vars) ──
+# ── Hardcoded Fallbacks ──
 FALLBACK_API_KEY = ""
 FALLBACK_API_BASE = "https://api.fireworks.ai/inference/v1"
+HF_TOKEN = os.getenv("HF_TOKEN", "")
 
 # ── Models ────────────────────────────────────────────────────────────
-LOCAL_MODEL_NAME = os.getenv("THRIFT_LOCAL_MODEL", "microsoft/Phi-4-mini-instruct")
+LOCAL_MODEL_NAME = os.getenv("THRIFT_LOCAL_MODEL", "ByteDance/Ouro-1.4B")
 
 FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY") or os.getenv("FW_API_KEY", "") or FALLBACK_API_KEY
 FIREWORKS_API_BASE = os.getenv("FIREWORKS_BASE_URL", FALLBACK_API_BASE)
@@ -35,7 +36,7 @@ else:
 _usable_default = [m for m in AVAILABLE_MODELS if m not in IMAGE_MODELS]
 FIREWORKS_MODEL = _usable_default[0] if _usable_default else "accounts/fireworks/models/deepseek-v4-pro"
 
-# ── Smart Model Selection ──
+# ── Smart Model Selection ───────────────────────────────────────────
 HARD_TASK_MODEL_PRIORITY = [
     "accounts/fireworks/models/deepseek-v4-pro",
     "accounts/fireworks/models/gpt-oss-120b",
@@ -46,7 +47,7 @@ HARD_TASK_MODEL_PRIORITY = [
 ]
 EASY_TASK_MODEL_PRIORITY = [
     "accounts/fireworks/models/deepseek-v4-pro",
-    "accounts/fireworks/models/glm-5p1",
+    "accounts/fireworks/models/gpt-oss-120b",
     "accounts/fireworks/models/deepseek-v4-pro",
     "accounts/fireworks/models/gpt-oss-120b",
     "accounts/fireworks/models/kimi-k2p6",
@@ -79,10 +80,10 @@ def get_sorted_models_by_intent(intent: str, available_models: list) -> list:
 
 
 # ── Performance / environment tuning ────────────────────────────────────
-SKIP_TIER_1 = os.getenv("THRIFT_SKIP_TIER_1", "true").lower() == "true"
-USE_4BIT = os.getenv("THRIFT_USE_4BIT", "false").lower() == "true"
+SKIP_TIER_1 = os.getenv("THRIFT_SKIP_TIER_1", "false").lower() == "true"  # Changed to false for local testing
+USE_4BIT = os.getenv("THRIFT_USE_4BIT", "true").lower() == "true"  # Enable 4-bit for Ouro-1.4B
 
-# ── Cascade Thresholds ────────────────────────────────────────────────
+# ─ Cascade Thresholds ────────────────────────────────────────────────
 CONFIDENCE_THRESHOLD = float(os.getenv("THRIFT_CONFIDENCE_THRESHOLD", "0.65"))
 
 # ── Decomposition ─────────────────────────────────────────────────────
@@ -108,13 +109,8 @@ INTENT_KEYWORDS = {
 SIMPLE_MATH_PATTERN = r'[\d]+\s*[\+\-\*\/\%\^]\s*[\d]+'
 
 # ── Tier 1 local model ────────────────────────────────────────────────
-LOCAL_MAX_NEW_TOKENS = 150  # Hard limit for local model
+LOCAL_MAX_NEW_TOKENS = 150  # Slightly higher for Ouro
 LOCAL_GENERATION_TIMEOUT_SEC = 60
-
-# ── Token Budget System ───────────────────────────────────────────────
-# Base budget per task, and how savings from local tasks get reallocated
-BASE_TOKEN_BUDGET_PER_TASK = 400
-TOKEN_SAVINGS_REALLOCATION_FACTOR = 0.8  # 80% of saved tokens go to harder tasks
 
 # ── Confidence estimation ─────────────────────────────────────────────
 HEDGE_PHRASES = [
@@ -134,8 +130,8 @@ SELF_RATING_WEIGHT = 0.5
 HEURISTIC_WEIGHT = 0.5
 
 # ── Tier 2 Fireworks ─────────────────────────────────────────────────
-FIREWORKS_MAX_TOKENS_SIMPLE = int(os.getenv("THRIFT_MAX_TOKENS_SIMPLE", "200"))
-FIREWORKS_MAX_TOKENS_COMPLEX = int(os.getenv("THRIFT_MAX_TOKENS_COMPLEX", "800"))
+FIREWORKS_MAX_TOKENS_SIMPLE = int(os.getenv("THRIFT_MAX_TOKENS_SIMPLE", "320"))
+FIREWORKS_MAX_TOKENS_COMPLEX = int(os.getenv("THRIFT_MAX_TOKENS_COMPLEX", "1100"))
 FIREWORKS_MAX_TOKENS = FIREWORKS_MAX_TOKENS_COMPLEX
 
 FIREWORKS_TEMPERATURE = 0.1
