@@ -29,21 +29,20 @@ AVAILABLE_MODELS = [m for m in AVAILABLE_MODELS if m not in IMAGE_MODELS]
 FIREWORKS_MODEL = AVAILABLE_MODELS[0] if AVAILABLE_MODELS else "accounts/fireworks/models/deepseek-v4-pro"
 
 # ── Model Priorities (Accuracy-first) ──
+# Model priorities - use glm-5p2 for simple tasks, deepseek for complex
 HARD_TASK_MODELS = [
     "accounts/fireworks/models/deepseek-v4-pro",
     "accounts/fireworks/models/gpt-oss-120b",
-    "accounts/fireworks/models/kimi-k2p6",
 ]
 EASY_TASK_MODELS = [
+    "accounts/fireworks/models/glm-5p2",
+    "accounts/fireworks/models/glm-5p1",
     "accounts/fireworks/models/deepseek-v4-pro",
-    "accounts/fireworks/models/gpt-oss-120b",
-    "accounts/fireworks/models/kimi-k2p6",
 ]
 
 COMPLEX_INTENTS = {"generation", "computation", "analysis"}
 
 def get_sorted_models_by_intent(intent: str, available_models: list) -> list:
-    """Return models in priority order based on task complexity."""
     usable = [m for m in available_models if m not in IMAGE_MODELS]
     if not usable:
         return []
@@ -53,6 +52,9 @@ def get_sorted_models_by_intent(intent: str, available_models: list) -> list:
     remaining = [m for m in usable if m not in prioritized]
     return prioritized + remaining
 
+COMPLEX_INTENTS = {"generation", "computation", "analysis"}
+
+
 # ── Skip local model (CRITICAL for judging environment) ──
 SKIP_TIER_1 = True  # ALWAYS skip local model for submission
 
@@ -60,8 +62,8 @@ SKIP_TIER_1 = True  # ALWAYS skip local model for submission
 CONFIDENCE_THRESHOLD = 0.65
 
 # ── Decomposition ──
-MIN_SUBTASK_LENGTH = 15
-MAX_SUBTASKS = 5
+MIN_SUBTASK_LENGTH = 19
+MAX_SUBTASKS = 9
 
 # ── Intent Keywords ──
 INTENT_KEYWORDS = {

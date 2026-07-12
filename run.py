@@ -20,11 +20,10 @@ def main():
     logger.info("=" * 60)
     
     # Check environment
-    from config import FIREWORKS_API_KEY, FIREWORKS_API_BASE, AVAILABLE_MODELS, SKIP_TIER_1
+    from config import FIREWORKS_API_KEY, FIREWORKS_API_BASE, AVAILABLE_MODELS
     logger.info(f"FIREWORKS_API_KEY : {'SET' if FIREWORKS_API_KEY else 'NOT SET'}")
     logger.info(f"FIREWORKS_BASE_URL: {FIREWORKS_API_BASE}")
     logger.info(f"ALLOWED_MODELS    : {','.join(AVAILABLE_MODELS[:3])}...")
-    logger.info(f"SKIP_TIER_1       : {SKIP_TIER_1}")
     
     # Load tasks
     input_path = os.getenv("INPUT_PATH", "/input/tasks.json")
@@ -58,13 +57,11 @@ def main():
             run = agent.answer(prompt)
             total_tokens += run.tokens_used
             
-            # Safely extract answer text
+            # Extract answer text safely
             answer_text = ""
             if hasattr(run, 'final_answer'):
                 if hasattr(run.final_answer, 'text'):
                     answer_text = run.final_answer.text
-                elif hasattr(run.final_answer, 'answer'):
-                    answer_text = run.final_answer.answer
                 elif isinstance(run.final_answer, str):
                     answer_text = run.final_answer
             
@@ -76,8 +73,6 @@ def main():
             
         except Exception as e:
             logger.error(f"  ✗ {task_id} failed: {e}")
-            import traceback
-            traceback.print_exc()
             results.append({
                 "task_id": task_id,
                 "answer": "",

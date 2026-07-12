@@ -161,78 +161,59 @@ class TierTwo:
 
     def _build_specialized_prompt(self, query: str, intent: str = "unknown"):
         lower = query.lower()
-        is_complex = intent in COMPLEX_INTENTS
-
-        base = (
-            f'You are a highly accurate assistant. When done, output your conclusion on its own line starting exactly with "{FINAL_ANSWER_MARKER}", followed by nothing but the answer itself.'
-        )
-        if is_complex:
-            system = base + " You may reason briefly first."
-        else:
-            system = base + " Skip reasoning and go straight to the final line."
-
+    
+        # Base prompt - just ask for concise, direct answers
+        system = "You are a helpful assistant. Provide clear, accurate, and concise answers."
+        user_content = query
+    
+        # Task-specific formatting hints
         if any(k in lower for k in ["extract", "named entit", "entities", "label each"]):
-            system += f' Your {FINAL_ANSWER_MARKER} line must contain ONLY a valid JSON array with "entity" and "type" fields.'
+            system += " Return your answer as a JSON array of objects with 'entity' and 'type' fields."
         elif "sentiment" in lower and any(k in lower for k in ["classify", "what is the sentiment", "sentiment of"]):
-            system += f' Your {FINAL_ANSWER_MARKER} line must be exactly one word: Positive, Negative, Neutral, or Mixed.'
+            system += " Respond with exactly one word: Positive, Negative, Neutral, or Mixed."
         elif any(k in lower for k in ["write a function", "write a python", "implement", "debug", "fix this", "find the error", "write code"]):
-            system += f' Put ONLY the complete code after {FINAL_ANSWER_MARKER}, inside a ```python code block.'
+            system += " Provide only the code in a ```python code block."
         elif any(k in lower for k in ["calculate", "how many", "what is the total", "percent", "arithmetic", "word problem"]):
-            system += f' Your {FINAL_ANSWER_MARKER} line must contain ONLY the final number.'
+            system += " Provide only the final numerical answer."
         elif any(k in lower for k in ["summarize", "summarise", "summary", "one sentence"]):
-            system += f' Put ONLY the summary after {FINAL_ANSWER_MARKER}.'
-
-        return system, query
+            system += " Provide a one-sentence summary."
+    
+        return system, user_content
 
     def _post_process_answer(self, raw_answer: str, query: str) -> str:
+        answer = raw_answer.strip()
         lower_query = query.lower()
-        core = _extract_final_answer(raw_answer)
-        answer = core if core is not None else raw_answer.strip()
-
+    
+        # NER: Extract JSON array
         if any(k in lower_query for k in ["extract", "named entit", "entities", "label each"]):
-            candidate = re.sub(r'```[a-zA-Z]*\n?|```', '', answer).strip()
-            start, end = candidate.find("["), candidate.rfind("]")
+            start = answer.find("[")
+            end = answer.rfind("]")
             if start != -1 and end != -1 and end > start:
-                snippet = candidate[start:end + 1]
-                try:
-                    json.loads(snippet)
-                    return snippet
-                except (ValueError, TypeError):
-                    pass
-            return candidate or raw_answer.strip()
-
+                return answer[start:end+1]
+    
+        # Sentiment: Extract single word
         if "sentiment" in lower_query and any(k in lower_query for k in ["classify", "what is the sentiment", "sentiment of"]):
             lower_ans = answer.lower()
-            if "mixed" in lower_ans or ("positive" in lower_ans and "negative" in lower_ans):
-                return "Mixed"
-            if "positive" in lower_ans:
-                return "Positive"
-            if "negative" in lower_ans:
-                return "Negative"
-            if "neutral" in lower_ans:
-                return "Neutral"
-            return answer
-
+            if "mixed" in lower_ans: return "Mixed"
+            if "positive" in lower_ans: return "Positive"
+            if "negative" in lower_ans: return "Negative"
+            if "neutral" in lower_ans: return "Neutral"
+    
+            # Math: Extract number
         if any(k in lower_query for k in ["calculate", "how many", "what is the total", "percent", "arithmetic", "word problem"]):
-            matches = re.findall(r'-?\d[\d,]*(?:\.\d+)?', answer)
+            matches = re.findall(r'-?\d+(?:\.\d+)?', answer)
             if matches:
-                return matches[-1].replace(",", "")
-            return answer
-
+                return matches[-1]
+    
+        # Code: Extract code block
         if any(k in lower_query for k in ["write a function", "write a python", "implement", "debug", "fix this", "find the error", "write code", "code"]):
             if "```" in answer:
                 start = answer.find("```")
                 end = answer.find("```", start + 3)
                 if end != -1:
-                    block = answer[start+3:end].strip()
-                    if block.lower().startswith("python"):
-                        block = block[6:].strip()
-                    return f"```python\n{block}\n```"
-
-        if answer.startswith("```"):
-            answer = re.sub(r'^```[a-zA-Z]*\n?|```$', '', answer).strip()
-
-        return answer or raw_answer.strip()
+                    return answer[start:end+3]
+    
+        return answer
 
     def try_handle(self, query: str, context: str = "", intent: str = "unknown") -> TierResult:
         if not self.api_key:
