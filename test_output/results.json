@@ -1,7 +1,7 @@
 [
   {
     "task_id": "practice-01",
-    "answer": "Canberra, near Lake Burley Griffin"
+    "answer": "Canberra, Lake Burley Griffin"
   },
   {
     "task_id": "practice-02",
@@ -13,11 +13,11 @@
   },
   {
     "task_id": "practice-04",
-    "answer": "The Amazon rainforest, known as the lungs of the Earth, produces about 20% of the world's oxygen and spans nine South American countries, hosting millions of species including many undiscovered ones."
+    "answer": "The Amazon rainforest, known as the lungs of the Earth, produces about 20% of the world's oxygen and spans nine South American countries, hosting millions of species, many still undiscovered."
   },
   {
     "task_id": "practice-05",
-    "answer": "[{\"entity\": \"Maria Sanchez\", \"type\": \"PERSON\"}, {\"entity\": \"Fireworks AI\", \"type\": \"ORGANIZATION\"}, {\"entity\": \"Berlin\", \"type\": \"LOCATION\"}, {\"entity\": \"last March\", \"type\": \"DATE\"}]"
+    "answer": "[{\"entity\": \"Maria Sanchez\", \"type\": \"PERSON\"}, {\"entity\": \"Fireworks AI\", \"type\": \"ORG\"}, {\"entity\": \"Berlin\", \"type\": \"GPE\"}, {\"entity\": \"last March\", \"type\": \"DATE\"}]"
   },
   {
     "task_id": "practice-06",
@@ -29,6 +29,6 @@
   },
   {
     "task_id": "practice-08",
-    "answer": "```python\ndef second_largest(numbers):\n    \"\"\"\n    Returns the second-largest unique number in the list.\n    If there are fewer than two distinct numbers, returns None.\n    \"\"\"\n    if len(numbers) < 2:\n        return None\n    # Get unique numbers\n    unique = list(set(numbers))\n    if len(unique) < 2:\n        return None\n    # Find the maximum\n    max_val = max(unique)\n    # Remove the maximum and find the next maximum\n    unique.remove(max_val)\n    return max(unique)\n\n# Alternative one-pass solution without using set (more memory efficient for large lists)\ndef second_largest_one_pass(numbers):\n    if len(numbers) < 2:\n        return None\n    first = second = float('-inf')\n    for num in numbers:\n        if num > first:\n            second = first\n            first = num\n        elif num > second and num != first:\n            second = num\n    return second if second != float('-inf') else None\n```"
+    "answer": "```python\ndef second_largest(numbers):\n    \"\"\"\n    Returns the second-largest unique number in the list.\n    If there are fewer than two distinct numbers, returns None.\n    \"\"\"\n    unique = list(set(numbers))\n    if len(unique) < 2:\n        return None\n    unique.sort()\n    return unique[-2]\n```"
   }
 ]

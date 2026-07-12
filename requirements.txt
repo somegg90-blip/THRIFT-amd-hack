@@ -1,7 +1,4 @@
-transformers>=4.40.0
-accelerate>=0.28.0
 python-dotenv
 requests
 fastapi
 uvicorn
-huggingface_hub
