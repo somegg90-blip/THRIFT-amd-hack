@@ -5,7 +5,6 @@ Tier implementations for the 3-tier cascade.
 
 import json
 import logging
-import os
 import re
 import time
 from dataclasses import dataclass
@@ -14,7 +13,6 @@ from typing import Optional
 import requests
 
 from config import (
-    LOCAL_MODEL_NAME,
     FIREWORKS_MODEL,
     FIREWORKS_API_BASE,
     FIREWORKS_API_KEY,
@@ -29,11 +27,9 @@ from config import (
     FIREWORKS_MAX_RETRIES,
     FIREWORKS_RETRY_BACKOFF_BASE,
     TIER2_MAX_TOTAL_ATTEMPTS,
-    LOCAL_MAX_NEW_TOKENS,
     HEDGE_PHRASES,
     REFUSAL_PHRASES,
     MIN_ANSWER_LENGTH,
-    HF_TOKEN,
 )
 from safe_math import extract_and_evaluate
 
@@ -42,7 +38,6 @@ logger = logging.getLogger("thrift.tiers")
 
 @dataclass
 class TierResult:
-    """Result from any tier."""
     answer: str
     confidence: float
     tier: int
@@ -83,148 +78,24 @@ class TierZero:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Tier 1 — Local Model (ByteDance/Ouro-1.4B)
+# Tier 1 — Local Model (DISABLED)
 # ═════════════════════════════════════════════════════════════════════
 
-class ModelLoadError(RuntimeError):
-    pass
-
-
 class TierOne:
-    def __init__(self, model_name: str = LOCAL_MODEL_NAME):
+    def __init__(self, model_name: str = None):
         self.model_name = model_name
-        self.model = None
-        self.tokenizer = None
-        self.device = None
-        self._loaded = False
-        self._load_error: Optional[str] = None
+        self._load_error = "Tier 1 disabled for submission"
 
     def _ensure_loaded(self):
-        if self._loaded:
-            return
-        if self._load_error:
-            raise ModelLoadError(self._load_error)
-
-        try:
-            import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-        except ImportError as e:
-            self._load_error = f"Missing dependency: {e}"
-            raise ModelLoadError(self._load_error)
-
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"[Tier 1] Loading {self.model_name} on {self.device} ...")
-
-        try:
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_name,
-                trust_remote_code=True,
-                token=HF_TOKEN,
-            )
-            if self.tokenizer.pad_token_id is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-
-            from config import USE_4BIT
-            model_kwargs = {"trust_remote_code": True, "token": HF_TOKEN}
-
-            if USE_4BIT:
-                from transformers import BitsAndBytesConfig
-                model_kwargs["quantization_config"] = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4",
-                )
-                model_kwargs["device_map"] = "auto"
-                logger.info("[Tier 1] Loading in 4-bit quantized mode")
-            elif self.device == "cuda":
-                model_kwargs["dtype"] = torch.float16
-                model_kwargs["device_map"] = "auto"
-                logger.info("[Tier 1] Loading in float16 mode (GPU)")
-            else:
-                model_kwargs["dtype"] = torch.float32
-                logger.info("[Tier 1] Loading in float32 mode (CPU)")
-
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_name, **model_kwargs,
-            )
-            if self.device == "cpu" and not USE_4BIT:
-                self.model = self.model.to("cpu")
-
-            self.model.eval()
-            self._loaded = True
-            logger.info("[Tier 1] Model loaded successfully.")
-        except Exception as e:
-            self._load_error = f"Failed to load {self.model_name}: {e}"
-            logger.error(f"[Tier 1] {self._load_error}")
-            raise ModelLoadError(self._load_error)
+        raise RuntimeError(self._load_error)
 
     def try_handle(self, query: str, context: str = "") -> TierResult:
-        if not query or not query.strip():
-            return TierResult(answer="", confidence=0.0, tier=1, tokens_used=0, error="Empty query")
-
-        try:
-            self._ensure_loaded()
-        except ModelLoadError as e:
-            return TierResult(answer="", confidence=0.0, tier=1, tokens_used=0, error=str(e))
-
-        try:
-            is_complex = self._is_complex_query(query)
-            prompt = self._build_prompt(query, context)
-            raw = self._generate(prompt, complex_mode=is_complex)
-            answer = self._clean_output(raw)
-
-            if not answer or len(answer) < MIN_ANSWER_LENGTH:
-                return TierResult(answer=answer, confidence=0.05, tier=1, tokens_used=0, raw_response=raw, error="Empty generation")
-
-            conf = _heuristic_confidence(answer)
-            return TierResult(answer=answer, confidence=conf, tier=1, tokens_used=0, raw_response=raw)
-        except Exception as e:
-            logger.warning(f"[Tier 1] Generation failed: {e}")
-            return TierResult(answer="", confidence=0.0, tier=1, tokens_used=0, error=f"Generation error: {e}")
-
-    def _build_prompt(self, query: str, context: str = "") -> str:
-        is_complex = self._is_complex_query(query)
-
-        if is_complex:
-            system = "You are an expert assistant. Think step by step, then provide a clear answer."
-            user_content = f"Think through this carefully:\n\n{query}"
-        else:
-            system = "You are a knowledgeable assistant. Answer directly and accurately."
-            user_content = query
-
-        messages = [{"role": "system", "content": system}]
-        if context:
-            messages.append({"role": "user", "content": f"Context: {context}\n\n{user_content}"})
-        else:
-            messages.append({"role": "user", "content": user_content})
-
-        return self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-
-    def _is_complex_query(self, query: str) -> bool:
-        lower = query.lower()
-        return any(sig in lower for sig in ['write a', 'implement', 'code for', 'function that', 'debug', 'fix this code'])
-
-    def _generate(self, prompt: str, max_new_tokens: int = LOCAL_MAX_NEW_TOKENS, complex_mode: bool = False) -> str:
-        import torch
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
-        with torch.no_grad():
-            outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id)
-        new_tokens = outputs[0][inputs["input_ids"].shape[-1]:]
-        return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
-
-    def _clean_output(self, raw: str) -> str:
-        answer = (raw or "").strip()
-        for marker in ["\nHuman:", "\nAssistant:", "\nUser:", "<|im_end|>", "</s>"]:
-            idx = answer.find(marker)
-            if idx != -1:
-                answer = answer[:idx]
-        return answer.strip()
+        return TierResult(answer="", confidence=0.0, tier=1, tokens_used=0, error=self._load_error)
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Module-level confidence function
-# ══════════════════════════════════════════════════════════════════════
+# Confidence estimation
+# ═════════════════════════════════════════════════════════════════════
 
 def _heuristic_confidence(answer: str) -> float:
     lower = answer.lower()
@@ -254,10 +125,6 @@ def _heuristic_confidence(answer: str) -> float:
     has_code = "```" in answer or "def " in answer or "function" in lower
     if has_code:
         score += 0.08
-
-    has_steps = bool(re.search(r'(step \d|first[,:]|second[,:]|third[,:]|finally[,:]|\d+\.\s)', lower))
-    if has_steps:
-        score += 0.05
 
     if word_count > 60:
         score += 0.05
@@ -291,7 +158,6 @@ class TierTwo:
         self.total_tokens_used = 0
         self.failure_count = 0
         self.available_models = [m for m in AVAILABLE_MODELS if m not in IMAGE_MODELS]
-        self.image_model = next((m for m in AVAILABLE_MODELS if m in IMAGE_MODELS), None)
 
     def _build_specialized_prompt(self, query: str, intent: str = "unknown"):
         lower = query.lower()
