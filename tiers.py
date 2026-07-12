@@ -418,18 +418,23 @@ class TierTwo:
         lower = query.lower()
         is_complex = intent in COMPLEX_INTENTS
 
-        # Keep the system instruction concise so the model doesn't pad
-        # with long chain-of-thought. Enforce a strict FINAL ANSWER line.
         base = (
-            f'You are a concise assistant. When finished, output a single line starting exactly with "{FINAL_ANSWER_MARKER}" '
-            'followed only by the answer. Do not include chain-of-thought or long explanations.'
+            "You are a highly accurate assistant. Correctness matters far "
+            "more than brevity. When you are done, output your conclusion "
+            f'on its own line starting exactly with "{FINAL_ANSWER_MARKER}", '
+            "followed by nothing but the answer itself."
         )
         if is_complex:
             system = base + (
-                ' If brief reasoning is necessary, include at most one short sentence before the final line.'
+                " You may reason briefly first (a few sentences or a short "
+                "worked calculation is fine) — but don't pad it, get to the "
+                "final line efficiently."
             )
         else:
-            system = base + ' For simple questions: do not include any reasoning — final line only.'
+            system = base + (
+                " This is a simple, direct question: skip any reasoning and "
+                "go straight to the final line."
+            )
 
         if any(k in lower for k in ["extract", "named entit", "entities", "label each"]):
             system += (
